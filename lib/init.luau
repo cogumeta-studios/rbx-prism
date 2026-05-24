@@ -12,6 +12,7 @@ local MAX_PACKET_SIZE = 8000
 local MAX_CALLS_PER_FRAME = 2
 local IS_SERVER = RunService:IsServer()
 local IS_STUDIO = RunService:IsStudio()
+local TIMEOUTED = table.freeze({})
 
 local swarn = if IS_STUDIO then warn else function() end
 
@@ -33,7 +34,7 @@ type PrismData<T> = {
 	Event: typeof(Signal.new()),
 	OnQuerie: ((Player, T) -> any)?,
 	Send: (self: Prism<T>, data: T, options: (SendOptions | Player | { Player })?) -> (),
-	Querie: (self: Prism<T>, data: T, target: Player?) -> (),
+	Querie: (self: Prism<T>, data: T, target: Player?) -> any | typeof(TIMEOUTED)),
 }
 
 export type Prism<T = any> = typeof(setmetatable({} :: PrismData<T>, {} :: { __index: {} }))
@@ -119,20 +120,48 @@ function Prism:Send<T>(data: T, options: (SendOptions | Player | { Player })?)
 	end
 end
 
-function Prism:Querie<T>(data: T, target: Player?): any
+function Prism:Querie<T>(data: T, target: Player?, timeout: number?): any
 	assert(self._mode == "Querie", "[Prism] Only Querie packets can use :Querie()")
+
+	if IS_SERVER then
+		assert(target ~= nil, "[Prism] :Querie() on the server requires a target")
+	else
+		assert(target == nil, "[Prism] :Querie() on the client does not accept a target")
+	end
 
 	local cursor = Cursor.new()
 	writePacket(cursor, self._id, self._schema, data)
 	local buf, unbuf = cursor:flush()
+	local thread = coroutine.running()
+	local finished = false
 
-	if IS_SERVER then
-		assert(target ~= nil, "[Prism] :Querie() on the server requires a target")
-		return RFunction:InvokeClient(target :: Player, buf, unbuf)
-	else
-		assert(target == nil, "[Prism] :Querie() on the client does not accept a target")
-		return RFunction:InvokeServer(buf, unbuf)
+	task.spawn(function()
+		local result
+		if IS_SERVER then
+			result = RFunction:InvokeClient(target :: Player, buf, unbuf)
+		else
+			result = RFunction:InvokeServer(buf, unbuf)
+		end
+		if finished then
+			return
+		end
+
+		finished = true
+		coroutine.resume(thread, result)
+	end)
+
+	if timeout then
+		task.delay(timeout, function()
+			if finished then
+				return
+			end
+
+			finished = true
+			coroutine.resume(thread, TIMEOUTED)
+		end)
 	end
+
+	return coroutine.yield()
 end
 
 local function processBuffer(buf: buffer, unbuf: { any }, sender: Player?)
@@ -196,9 +225,12 @@ local function processQuerie(buf: buffer, unbuf: { any }, sender: Player?): any
 end
 
 local PrismBuilder: typeof(Types.Types) & {
+	Timeouted: typeof(TIMEOUTED),
 	new: <T>(name: string, schema: T, options: PrismOptions?) -> Prism<T>,
 } =
-	{} :: any
+	{
+		Timeouted = TIMEOUTED,
+	} :: any
 
 for k, v in Types.Types :: { [string]: any } do
 	PrismBuilder[k] = v
