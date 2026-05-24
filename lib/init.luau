@@ -196,7 +196,7 @@ local function processQuerie(buf: buffer, unbuf: { any }, sender: Player?): any
 end
 
 local PrismBuilder: typeof(Types.Types) & {
-	new: (name: string, schema: any, options: PrismOptions?) -> Prism,
+	new: <T>(name: string, schema: T, options: PrismOptions?) -> Prism<T>,
 } =
 	{} :: any
 
