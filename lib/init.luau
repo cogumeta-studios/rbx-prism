@@ -26,15 +26,17 @@ export type SendOptions = {
 	Except: boolean?,
 }
 
-type PrismData = {
+type PrismData<T> = {
 	_id: number,
 	_mode: Mode,
 	_schema: string,
 	Event: typeof(Signal.new()),
-	OnQuerie: ((Player, any) -> any)?,
+	OnQuerie: ((Player, T) -> any)?,
+	Send: (self: Prism<T>, data: T, options: (SendOptions | Player | { Player })?) -> (),
+	Querie: (self: Prism<T>, data: T, target: Player?) -> (),
 }
 
-export type Prism = typeof(setmetatable({} :: PrismData, {} :: { __index: {} }))
+export type Prism<T = any> = typeof(setmetatable({} :: PrismData<T>, {} :: { __index: {} }))
 
 local PShared: Folder
 local REvent: RemoteEvent
@@ -99,7 +101,7 @@ local function writePacket(cursor: Cursor, id: number, schema: string, data: any
 	Types.Descriptors[schema].write(cursor, data)
 end
 
-function Prism:Send(data: any, options: (SendOptions | Player | { Player })?)
+function Prism:Send<T>(data: T, options: (SendOptions | Player | { Player })?)
 	assert(self._mode ~= "Querie", "[Prism] Use :Querie() for Querie packets")
 
 	if IS_SERVER then
@@ -117,7 +119,7 @@ function Prism:Send(data: any, options: (SendOptions | Player | { Player })?)
 	end
 end
 
-function Prism:Querie(data: any, target: Player?): any
+function Prism:Querie<T>(data: T, target: Player?): any
 	assert(self._mode == "Querie", "[Prism] Only Querie packets can use :Querie()")
 
 	local cursor = Cursor.new()
@@ -202,7 +204,7 @@ for k, v in Types.Types :: { [string]: any } do
 	PrismBuilder[k] = v
 end
 
-function PrismBuilder.new(name: string, schema: any, options: PrismOptions?): Prism
+function PrismBuilder.new<T>(name: string, schema: T, options: PrismOptions?): Prism<T>
 	options = options or {}
 
 	if typeof(schema) == "table" then
@@ -215,7 +217,7 @@ function PrismBuilder.new(name: string, schema: any, options: PrismOptions?): Pr
 		end
 	end
 
-	local self = setmetatable({} :: PrismData, Prism) :: Prism
+	local self = setmetatable({} :: PrismData<T>, Prism) :: Prism<T>
 	self._mode = (options :: PrismOptions).Mode or "Reliable"
 	self._schema = schema :: string
 	self.Event = Signal.new()
