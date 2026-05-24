@@ -99,14 +99,6 @@ local function writePacket(cursor: Cursor, id: number, schema: string, data: any
 	Types.Descriptors[schema].write(cursor, data)
 end
 
-local function ensurePlayerCursors(player: Player)
-	if not serverCursors[player] then
-		swarn(`[Prism] Cursor not found for {player.Name}, creating on-demand.`)
-		serverCursors[player] = { Reliable = Cursor.new(), Unreliable = Cursor.new() }
-		serverFrameCalls[player] = 0
-	end
-end
-
 function Prism:Send(data: any, options: (SendOptions | Player | { Player })?)
 	assert(self._mode ~= "Querie", "[Prism] Use :Querie() for Querie packets")
 
@@ -114,7 +106,9 @@ function Prism:Send(data: any, options: (SendOptions | Player | { Player })?)
 		assert(options ~= nil, "[Prism] :Send() on the server requires a Target")
 
 		for _, target in resolveTargets(options :: any) do
-			ensurePlayerCursors(target)
+			if target.Parent ~= Players then
+				continue
+			end
 			writePacket((serverCursors :: any)[target][self._mode], self._id, self._schema, data)
 		end
 	else
