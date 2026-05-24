@@ -1,0 +1,10 @@
+{
+  "name": "Prism",
+  "tree": {
+    "$path": "lib",
+    "Packages": {
+      "$path": "Packages"
+    }
+  }
+}
+

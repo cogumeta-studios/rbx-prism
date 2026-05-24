@@ -1,0 +1,14 @@
+[package]
+name = "cogumeta-studios/prism"
+version = "1.0.0"
+exclude = [ "**" ]
+include = [
+  "src/**/*",
+  "lib/**/*",
+  "default.project.json",
+  "vaulty.toml"
+]
+
+[dependencies]
+Cursor = "cogumeta-studios/rbx-cursor@*"
+AcidSignal = "thecogumeta/rbx-acidsignal@*"

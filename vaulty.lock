@@ -1,0 +1,27 @@
+[[root_redirects]]
+name = "Cursor"
+target = "github.com_cogumeta-studios_rbx-cursor@v1.0.1"
+scope = "dependencies"
+
+[[root_redirects]]
+name = "AcidSignal"
+target = "github.com_thecogumeta_rbx-acidsignal@v1.0.2"
+scope = "dependencies"
+
+[[package]]
+name = "cogumeta-studios/cursor"
+source = "github.com:cogumeta-studios/rbx-cursor"
+scope = "dependencies"
+provider = "github.com"
+ref = "v1.0.1"
+folder = "github.com_cogumeta-studios_rbx-cursor@v1.0.1"
+redirects = [ ]
+
+[[package]]
+name = "thecogumeta_rbx-acidsignal-v1.0.2-AIqsGc"
+source = "github.com:thecogumeta/rbx-acidsignal"
+scope = "dependencies"
+provider = "github.com"
+ref = "v1.0.2"
+folder = "github.com_thecogumeta_rbx-acidsignal@v1.0.2"
+redirects = [ ]
