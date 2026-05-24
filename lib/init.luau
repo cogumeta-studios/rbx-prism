@@ -34,7 +34,7 @@ type PrismData<T> = {
 	Event: typeof(Signal.new()),
 	OnQuerie: ((Player, T) -> any)?,
 	Send: (self: Prism<T>, data: T, options: (SendOptions | Player | { Player })?) -> (),
-	Querie: (self: Prism<T>, data: T, target: Player?) -> any | typeof(TIMEOUTED)),
+	Querie: (self: Prism<T>, data: T, target: Player?) -> any | typeof(TIMEOUTED),
 }
 
 export type Prism<T = any> = typeof(setmetatable({} :: PrismData<T>, {} :: { __index: {} }))
