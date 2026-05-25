@@ -31,13 +31,29 @@ type PrismData<T> = {
 	_id: number,
 	_mode: Mode,
 	_schema: string,
+	_middlewares: { Middleware },
 	Event: typeof(Signal.new()),
 	OnQuerie: ((Player, T) -> any)?,
 	Send: (self: Prism<T>, data: T, options: (SendOptions | Player | { Player })?) -> (),
 	Querie: (self: Prism<T>, data: T, target: Player?) -> any | typeof(TIMEOUTED),
+	Use: (self: Prism<T>, middleware: Middleware) -> () -> (),
 }
 
-export type Prism<T = any> = typeof(setmetatable({} :: PrismData<T>, {} :: { __index: {} }))
+export type Prism<T = any> = typeof(setmetatable({} :: PrismData<T>, {}))
+
+type MiddlewareContext = {
+	Packet: Prism,
+	Player: Player?,
+	Data: any,
+	Stage: "Incoming" | "Outgoing",
+	Direction: "ClientToServer" | "ServerToClient",
+	Kind: "Packet" | "Querie",
+	Metadata: { [any]: any },
+	Timestamp: number,
+	TraceId: number,
+}
+
+type Middleware = (ctx: MiddlewareContext, next: () -> ()) -> ()
 
 local PShared: Folder
 local REvent: RemoteEvent
@@ -45,6 +61,7 @@ local URevent: UnreliableRemoteEvent
 local RFunction: RemoteFunction
 
 local nextID = 0
+local nextTraceID = 0
 local instances: { [number]: Prism } = {}
 
 type PlayerCursors = { Reliable: Cursor, Unreliable: Cursor }
@@ -55,6 +72,9 @@ local clientCursors: PlayerCursors = {
 	Reliable = Cursor.new(),
 	Unreliable = Cursor.new(),
 }
+
+local globalMiddlewares: { Middleware } = {}
+local middlewareToSource: { [Middleware]: string } = {}
 
 local Prism = {}
 Prism.__index = Prism
@@ -97,9 +117,108 @@ local function resolveTargets(options: SendOptions | Player | { Player }): { Pla
 	return { sendOptions.Target :: Player }
 end
 
+local function runMiddlewares(ctx: MiddlewareContext, middlewares: { Middleware }, handler: () -> ()): boolean
+	local completed = false
+
+	local function execute(index: number)
+		local mw = middlewares[index]
+
+		if not mw then
+			completed = true
+			handler()
+			return
+		end
+
+		local called = false
+
+		local thread = coroutine.create(function()
+			mw(ctx, function()
+				if called then
+					return
+				end
+
+				called = true
+				execute(index + 1)
+			end)
+		end)
+
+		local ok, err = coroutine.resume(thread)
+
+		if not ok then
+			swarn(`[Prism] Middleware error: {err}, middleware declared at: {middlewareToSource[mw]}`)
+			return
+		end
+
+		if coroutine.status(thread) ~= "dead" then
+			swarn(`[Prism] Middleware yielded, this is not allowed, middleware declared at: {middlewareToSource[mw]}`)
+			return
+		end
+
+		if not called then
+			return
+		end
+	end
+
+	execute(1)
+
+	return completed
+end
+
+local function getMiddlewares(packet: Prism)
+	local result = table.clone(globalMiddlewares)
+
+	for _, mw in packet._middlewares do
+		table.insert(result, mw)
+	end
+
+	return result
+end
+
+local function createMWContext(
+	packet: Prism,
+	player: Player?,
+	data: any,
+	stage: "Incoming" | "Outgoing"
+): MiddlewareContext
+	nextTraceID += 1
+
+	return {
+		Packet = packet,
+		Player = player,
+		Data = data,
+
+		Stage = stage,
+
+		Direction = if IS_SERVER
+			then (stage == "Incoming" and "ClientToServer" or "ServerToClient")
+			else (stage == "Incoming" and ("ServerToClient" :: any) or "ClientToServer"),
+
+		Kind = if packet._mode == "Querie" then "Querie" else "Packet",
+
+		Metadata = {},
+
+		Timestamp = os.clock(),
+		TraceId = nextTraceID,
+	}
+end
+
 local function writePacket(cursor: Cursor, id: number, schema: string, data: any)
 	cursor:writeU16(id)
 	Types.Descriptors[schema].write(cursor, data)
+end
+
+function Prism:Use(middleware: Middleware): () -> ()
+	local scr, line = debug.info(2, "sl")
+	middlewareToSource[middleware] = `{scr}:{line}`
+	table.insert(self._middlewares, middleware)
+
+	return function()
+		local index = table.find(self._middlewares, middleware)
+
+		if index then
+			table.remove(self._middlewares, index)
+		end
+	end
 end
 
 function Prism:Send<T>(data: T, options: (SendOptions | Player | { Player })?)
@@ -112,11 +231,21 @@ function Prism:Send<T>(data: T, options: (SendOptions | Player | { Player })?)
 			if target.Parent ~= Players then
 				continue
 			end
-			writePacket((serverCursors :: any)[target][self._mode], self._id, self._schema, data)
+
+			local ctx = createMWContext(self, target, data, "Outgoing")
+
+			runMiddlewares(ctx, getMiddlewares(self), function()
+				writePacket((serverCursors :: any)[target][self._mode], self._id, self._schema, ctx.Data)
+			end)
 		end
 	else
 		assert(options == nil, "[Prism] :Send() on the client does not accept a Target")
-		writePacket((clientCursors :: any)[self._mode], self._id, self._schema, data)
+
+		local ctx = createMWContext(self, nil, data, "Outgoing")
+
+		runMiddlewares(ctx, getMiddlewares(self), function()
+			writePacket((clientCursors :: any)[self._mode], self._id, self._schema, ctx.Data)
+		end)
 	end
 end
 
@@ -130,7 +259,17 @@ function Prism:Querie<T>(data: T, target: Player?, timeout: number?): any
 	end
 
 	local cursor = Cursor.new()
-	writePacket(cursor, self._id, self._schema, data)
+
+	local ctx = createMWContext(self, target, data, "Outgoing")
+
+	local ok = runMiddlewares(ctx, getMiddlewares(self), function()
+		writePacket(cursor, self._id, self._schema, ctx.Data)
+	end)
+
+	if not ok then
+		return nil
+	end
+
 	local buf, unbuf = cursor:flush()
 	local thread = coroutine.running()
 	local finished = false
@@ -182,12 +321,15 @@ local function processBuffer(buf: buffer, unbuf: { any }, sender: Player?)
 			end
 
 			local data = Types.Descriptors[packet._schema].read(cursor)
+			local ctx = createMWContext(packet, sender, data, "Incoming")
 
-			if sender then
-				packet.Event:Fire(sender, data)
-			else
-				packet.Event:Fire(data)
-			end
+			runMiddlewares(ctx, getMiddlewares(packet), function()
+				if sender then
+					packet.Event:Fire(sender, ctx.Data)
+				else
+					packet.Event:Fire(ctx.Data)
+				end
+			end)
 		end
 	end)
 
@@ -213,7 +355,18 @@ local function processQuerie(buf: buffer, unbuf: { any }, sender: Player?): any
 		end
 
 		local data = Types.Descriptors[packet._schema].read(cursor)
-		return packet.OnQuerie(sender :: Player, data)
+		local ctx = createMWContext(packet, sender, data, "Incoming")
+		local response
+
+		local ok = runMiddlewares(ctx, getMiddlewares(packet), function()
+			response = packet.OnQuerie(sender :: Player, ctx.Data)
+		end)
+
+		if not ok then
+			return nil
+		end
+
+		return response
 	end)
 
 	if not ok then
@@ -227,6 +380,7 @@ end
 local PrismBuilder: typeof(Types.Types) & {
 	Timeouted: typeof(TIMEOUTED),
 	new: <T>(name: string, schema: T, options: PrismOptions?) -> Prism<T>,
+	use: (middleware: Middleware) -> () -> (),
 } =
 	{
 		Timeouted = TIMEOUTED,
@@ -252,7 +406,8 @@ function PrismBuilder.new<T>(name: string, schema: T, options: PrismOptions?): P
 	local self = setmetatable({} :: PrismData<T>, Prism) :: Prism<T>
 	self._mode = (options :: PrismOptions).Mode or "Reliable"
 	self._schema = schema :: string
-	self.Event = Signal.new()
+	self._middlewares = {}
+	(self :: any).Event = Signal.new()
 
 	if IS_SERVER then
 		nextID += 1
@@ -270,6 +425,20 @@ function PrismBuilder.new<T>(name: string, schema: T, options: PrismOptions?): P
 	instances[self._id] = self
 
 	return self
+end
+
+function PrismBuilder.use(middleware: Middleware): () -> ()
+	local scr, line = debug.info(2, "sl")
+	middlewareToSource[middleware] = `{scr}:{line}`
+	table.insert(globalMiddlewares, middleware)
+
+	return function()
+		local index = table.find(globalMiddlewares, middleware)
+
+		if index then
+			table.remove(globalMiddlewares, index)
+		end
+	end
 end
 
 if IS_SERVER then
