@@ -18,10 +18,6 @@ local swarn = if IS_STUDIO then warn else function() end
 
 type Mode = "Reliable" | "Unreliable" | "Querie"
 
-type PrismOptions = {
-	Mode: Mode?,
-}
-
 export type SendOptions = {
 	Target: (Player | { Player })?,
 	Except: boolean?,
@@ -379,7 +375,7 @@ end
 
 local PrismBuilder: typeof(Types.Types) & {
 	Timeouted: typeof(TIMEOUTED),
-	new: <T>(name: string, schema: T, options: PrismOptions?) -> Prism<T>,
+	new: <T>(name: string, schema: T, mode: Mode?) -> Prism<T>,
 	use: (middleware: Middleware) -> () -> (),
 } =
 	{
@@ -390,9 +386,7 @@ for k, v in Types.Types :: { [string]: any } do
 	PrismBuilder[k] = v
 end
 
-function PrismBuilder.new<T>(name: string, schema: T, options: PrismOptions?): Prism<T>
-	options = options or {}
-
+function PrismBuilder.new<T>(name: string, schema: T, mode: Mode?): Prism<T>
 	if typeof(schema) == "table" then
 		local t: any = schema
 		if t[1] then
@@ -404,7 +398,7 @@ function PrismBuilder.new<T>(name: string, schema: T, options: PrismOptions?): P
 	end
 
 	local self = setmetatable({} :: PrismData<T>, Prism) :: Prism<T>
-	self._mode = (options :: PrismOptions).Mode or "Reliable"
+	self._mode = mode or "Reliable"
 	self._schema = schema :: string
 	self._middlewares = {}
 	(self :: any).Event = Signal.new()
