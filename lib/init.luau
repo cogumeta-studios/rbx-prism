@@ -5,6 +5,7 @@ local RunService = game:GetService("RunService")
 local Cursor = require(script.Packages.Cursor)
 local Signal = require(script.Packages.AcidSignal)
 local Types = require(script.Types)
+local Plugins = require(script.Plugins)
 
 type Cursor = typeof(Cursor.new())
 
@@ -375,11 +376,13 @@ end
 
 local PrismBuilder: typeof(Types.Types) & {
 	Timeouted: typeof(TIMEOUTED),
+	Plugins: typeof(Plugins),
 	new: <T>(name: string, schema: T, mode: Mode?) -> Prism<T>,
 	use: (middleware: Middleware) -> () -> (),
 } =
 	{
 		Timeouted = TIMEOUTED,
+		Plugins = Plugins,
 	} :: any
 
 for k, v in Types.Types :: { [string]: any } do
