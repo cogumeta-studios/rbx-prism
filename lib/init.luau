@@ -441,19 +441,19 @@ end
 if IS_SERVER then
 	PShared = Instance.new("Folder")
 	PShared.Name = "_PrismShared"
-	PShared.Parent = ReplicatedStorage
+	PShared.Parent = script
 
 	REvent = Instance.new("RemoteEvent")
 	REvent.Name = "_PrismReliable"
-	REvent.Parent = ReplicatedStorage
+	REvent.Parent = script
 
 	URevent = Instance.new("UnreliableRemoteEvent")
 	URevent.Name = "_PrismUnreliable"
-	URevent.Parent = ReplicatedStorage
+	URevent.Parent = script
 
 	RFunction = Instance.new("RemoteFunction")
 	RFunction.Name = "_PrismQuerie"
-	RFunction.Parent = ReplicatedStorage
+	RFunction.Parent = script
 
 	Players.PlayerAdded:Connect(function(player)
 		serverCursors[player] = { Reliable = Cursor.new(), Unreliable = Cursor.new() }
@@ -507,10 +507,10 @@ if IS_SERVER then
 		end
 	end)
 else
-	PShared = ReplicatedStorage:WaitForChild("_PrismShared") :: Folder
-	REvent = ReplicatedStorage:WaitForChild("_PrismReliable") :: RemoteEvent
-	URevent = ReplicatedStorage:WaitForChild("_PrismUnreliable") :: UnreliableRemoteEvent
-	RFunction = ReplicatedStorage:WaitForChild("_PrismQuerie") :: RemoteFunction
+	PShared = script:WaitForChild("_PrismShared") :: Folder
+	REvent = script:WaitForChild("_PrismReliable") :: RemoteEvent
+	URevent = script:WaitForChild("_PrismUnreliable") :: UnreliableRemoteEvent
+	RFunction = script:WaitForChild("_PrismQuerie") :: RemoteFunction
 
 	REvent.OnClientEvent:Connect(function(buf: buffer, unbuf: { any })
 		processBuffer(buf, unbuf, nil)
