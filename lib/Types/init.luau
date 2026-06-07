@@ -19,6 +19,15 @@ local function makeCursorTypeDescriptor<T>(name: string): Descriptor<T>
 	return { read = (Cursor :: any)[`read{name}`], write = (Cursor :: any)[`write{name}`] }
 end
 
+local I16Limit = 32767
+
+local VECTOR_DEFAULT = 0
+local VECTOR_UNITED = 1
+local VECTOR_ZERO = 2
+local CFRAME_DEFAULT = 0
+local CFRAME_ALIGNED = 1
+local CFRAME_ZERO = 2
+
 local descriptors = {
 	U8 = makeCursorTypeDescriptor("U8"),
 	U16 = makeCursorTypeDescriptor("U16"),
@@ -38,6 +47,93 @@ local descriptors = {
 	end, function(cursor, player: Player)
 		cursor:writeF64(player.UserId)
 	end),
+
+	Vector2 = makeTypeDescriptor(function(cursor): Vector2
+		local kind = cursor:readU8()
+
+		if kind == VECTOR_DEFAULT then
+			return Vector2.new(cursor:readF32(), cursor:readF32())
+		elseif kind == VECTOR_UNITED then
+			return Vector2.new(cursor:readI16() / I16Limit, cursor:readI16() / I16Limit)
+		elseif kind == VECTOR_ZERO then
+			return Vector2.zero
+		end
+
+		return Vector2.zero
+	end, function(cursor, vec: Vector2)
+		if vec.Magnitude == 1 then
+			cursor:writeU8(VECTOR_DEFAULT)
+			cursor:writeF32(vec.X)
+			cursor:writeF32(vec.Y)
+		elseif vec.Unit == vec then
+			cursor:writeU8(VECTOR_UNITED)
+			cursor:writeI16(math.round(vec.X * I16Limit))
+			cursor:writeI16(math.round(vec.Y * I16Limit))
+		else
+			cursor:writeU8(VECTOR_ZERO)
+		end
+	end),
+	Vector3 = makeTypeDescriptor(function(cursor): Vector3
+		local kind = cursor:readU8()
+
+		if kind == VECTOR_DEFAULT then
+			return Vector3.new(cursor:readF32(), cursor:readF32(), cursor:readF32())
+		elseif kind == VECTOR_UNITED then
+			return Vector3.new(cursor:readI16() / I16Limit, cursor:readI16() / I16Limit, cursor:readI16() / I16Limit)
+		elseif kind == VECTOR_ZERO then
+			return Vector3.zero
+		end
+
+		return Vector3.zero
+	end, function(cursor, vec: Vector3)
+		if vec.Magnitude == 1 then
+			cursor:writeU8(VECTOR_DEFAULT)
+			cursor:writeF32(vec.X)
+			cursor:writeF32(vec.Y)
+			cursor:writeF32(vec.Z)
+		elseif vec.Unit == vec then
+			cursor:writeU8(VECTOR_UNITED)
+			cursor:writeI16(math.round(vec.X * I16Limit))
+			cursor:writeI16(math.round(vec.Y * I16Limit))
+			cursor:writeI16(math.round(vec.Z * I16Limit))
+		else
+			cursor:writeU8(VECTOR_ZERO)
+		end
+	end),
+	CFrame = makeTypeDescriptor(function(cursor): CFrame
+		local kind = cursor:readU8()
+
+		if kind == CFRAME_DEFAULT then
+			local origin = Vector3.new(cursor:readF32(), cursor:readF32(), cursor:readF32())
+			local look = origin
+				+ Vector3.new(cursor:readI16() / I16Limit, cursor:readI16() / I16Limit, cursor:readI16() / I16Limit)
+
+			return CFrame.new(origin, look)
+		elseif kind == CFRAME_ALIGNED then
+			return CFrame.new(cursor:readF32(), cursor:readF32(), cursor:readF32())
+		elseif kind == CFRAME_ZERO then
+			return CFrame.new()
+		end
+
+		return CFrame.new()
+	end, function(cursor, cf: CFrame)
+		if cf == CFrame.new() then
+			cursor:writeU8(CFRAME_ZERO)
+		elseif cf.LookVector ~= Vector3.zAxis * -1 then
+			cursor:writeU8(CFRAME_DEFAULT)
+			cursor:writeF32(cf.Position.X)
+			cursor:writeF32(cf.Position.Y)
+			cursor:writeF32(cf.Position.Z)
+			cursor:writeI16(math.round(cf.LookVector.X * I16Limit))
+			cursor:writeI16(math.round(cf.LookVector.Y * I16Limit))
+			cursor:writeI16(math.round(cf.LookVector.Z * I16Limit))
+		else
+			cursor:writeU8(CFRAME_ALIGNED)
+			cursor:writeF32(cf.Position.X)
+			cursor:writeF32(cf.Position.Y)
+			cursor:writeF32(cf.Position.Z)
+		end
+	end),
 }
 
 local types = {
@@ -55,6 +151,9 @@ local types = {
 	Any = ("Any" :: any) :: any,
 
 	Player = ("Player" :: any) :: Player,
+	Vector2 = ("Vector2" :: any) :: Vector2,
+	Vector3 = ("Vector3" :: any) :: Vector3,
+	CFrame = ("CFrame" :: any) :: CFrame,
 
 	Struct = function<T>(schema: T): T
 		local fields: { { name: string, typeKey: string } } = {}
@@ -130,7 +229,7 @@ local types = {
 				return innerDesc.read(cursor) :: T
 			end
 			return nil
-		end, function(cursor, value: { T })
+		end, function(cursor, value: T?)
 			local present = value ~= nil
 			cursor:writeBool(present)
 			if present then
