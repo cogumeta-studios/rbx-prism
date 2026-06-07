@@ -1,7 +1,7 @@
-return function(limit: number, perSecs: number)
+return function(limit: number, perSecs: number?)
 	local buckets = setmetatable({}, { __mode = "k" })
 
-	local refillRate = limit / perSecs
+	local refillRate = limit / (perSecs or 1)
 
 	return function(ctx, next)
 		if ctx.Stage ~= "Incoming" then
