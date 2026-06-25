@@ -1,5 +1,4 @@
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Cursor = require(script.Packages.Cursor)
@@ -33,6 +32,8 @@ type PrismData<T> = {
 	OnQuerie: ((Player, T) -> any)?,
 	Send: (self: Prism<T>, data: T, options: (SendOptions | Player | { Player })?) -> (),
 	Querie: (self: Prism<T>, data: T, target: Player?) -> any | typeof(TIMEOUTED),
+	ClientListen: (self: Prism<T>, callback: (T) -> ()) -> typeof(Signal.new():Connect(function() end)),
+	ServerListen: (self: Prism<T>, callback: (Player, T) -> ()) -> typeof(Signal.new():Connect(function() end)),
 	Use: (self: Prism<T>, middleware: Middleware) -> () -> (),
 }
 
@@ -299,6 +300,12 @@ function Prism:Querie<T>(data: T, target: Player?, timeout: number?): any
 
 	return coroutine.yield()
 end
+
+function Prism:Listen<T>(callback: (...any) -> ()): typeof(Signal.new():Connect(function() end))
+	return self.Event:Connect(callback)
+end
+Prism.ServerListen = Prism.Listen
+Prism.ClientListen = Prism.Listen
 
 local function processBuffer(buf: buffer, unbuf: { any }, sender: Player?)
 	local ok, err = pcall(function()
