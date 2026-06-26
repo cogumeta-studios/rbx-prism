@@ -1,6 +1,6 @@
 [package]
 name = "cogumeta-studios/prism"
-version = "1.2.0"
+version = "1.2.1"
 exclude = [ "**" ]
 include = [
   "src/**/*",
