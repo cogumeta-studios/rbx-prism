@@ -8,8 +8,7 @@ local Plugins = require(script.Plugins)
 
 type Cursor = typeof(Cursor.new())
 
-local MAX_PACKET_SIZE = 8000
-local MAX_CALLS_PER_FRAME = 2
+local MAX_PACKET_SIZE = 4096
 local IS_SERVER = RunService:IsServer()
 local IS_STUDIO = RunService:IsStudio()
 local TIMEOUTED = table.freeze({})
@@ -64,7 +63,7 @@ local instances: { [number]: Prism } = {}
 
 type PlayerCursors = { Reliable: Cursor, Unreliable: Cursor }
 local serverCursors: { [Player]: PlayerCursors } = {}
-local serverFrameCalls: { [Player]: number } = {}
+local serverFrameBytes: { [Player]: number } = {}
 
 local clientCursors: PlayerCursors = {
 	Reliable = Cursor.new(),
@@ -464,26 +463,21 @@ if IS_SERVER then
 
 	Players.PlayerAdded:Connect(function(player)
 		serverCursors[player] = { Reliable = Cursor.new(), Unreliable = Cursor.new() }
-		serverFrameCalls[player] = 0
+		serverFrameBytes[player] = 0
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
 		serverCursors[player] = nil
-		serverFrameCalls[player] = nil
+		serverFrameBytes[player] = nil
 	end)
 
 	local function onReceive(player: Player, buf: buffer, unbuf: { any })
-		local calls = (serverFrameCalls[player] or 0) + 1
-		serverFrameCalls[player] = calls
+		local bytes = (serverFrameBytes[player] or 0) + math.max(buffer.len(buf), MAX_PACKET_SIZE / 25)
+		serverFrameBytes[player] = bytes
 
-		if calls > MAX_CALLS_PER_FRAME then
-			swarn(`[Prism] Rate limit exceeded for {player.Name} ({calls} calls this frame), packet dropped.`)
-			return
-		end
-
-		if buffer.len(buf) > MAX_PACKET_SIZE then
-			swarn(`[Prism] Oversized packet from {player.Name} ({buffer.len(buf)} bytes), packet dropped.`)
-			return
+		if bytes > MAX_PACKET_SIZE then
+			swarn(`[Prism] Oversized packet from {player.Name} ({bytes} bytes), packet throttled.`)
+			task.wait(bytes / MAX_PACKET_SIZE)
 		end
 
 		processBuffer(buf, unbuf, player)
@@ -510,7 +504,7 @@ if IS_SERVER then
 				serverCursors[player].Unreliable = Cursor.new()
 			end
 
-			serverFrameCalls[player] = 0
+			serverFrameBytes[player] = 0
 		end
 	end)
 else
