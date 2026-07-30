@@ -61,16 +61,16 @@ local descriptors = {
 
 		return Vector2.zero
 	end, function(cursor, vec: Vector2)
-		if vec.Magnitude == 1 then
-			cursor:writeU8(VECTOR_DEFAULT)
-			cursor:writeF32(vec.X)
-			cursor:writeF32(vec.Y)
-		elseif vec.Unit == vec then
+		if vec.Magnitude == 0 then
+			cursor:writeU8(VECTOR_ZERO)
+		elseif vec.Magnitude == 1 then
 			cursor:writeU8(VECTOR_UNITED)
 			cursor:writeI16(math.round(vec.X * I16Limit))
 			cursor:writeI16(math.round(vec.Y * I16Limit))
 		else
-			cursor:writeU8(VECTOR_ZERO)
+			cursor:writeU8(VECTOR_DEFAULT)
+			cursor:writeF32(vec.X)
+			cursor:writeF32(vec.Y)
 		end
 	end),
 	Vector3 = makeTypeDescriptor(function(cursor): Vector3
