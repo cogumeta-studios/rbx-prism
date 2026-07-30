@@ -420,7 +420,7 @@ function PrismBuilder.new<T>(name: string, schema: T, mode: Mode?): Prism<T>
 		local id: number? = PShared:GetAttribute(name) :: any
 		if not id then
 			local timeout = task.delay(5, function()
-				warn(`[Prism] Prism declaration is taking too long to load, did you forgot to declare it on server?`)
+				warn(`[Prism] "{name}" declaration is taking too long to load, did you forgot to declare it on server?`)
 			end)
 			PShared:GetAttributeChangedSignal(name):Wait()
 			task.cancel(timeout)
